@@ -296,8 +296,8 @@ Resources:
               - "## Execute analyzeCUR binary"
               - "Fn::If":
                 - NoUploadBucket
-                - "Fn::Sub": "chmod 755 ./bin/analyzeCUR && ./bin/analyzeCUR -bucket ${CURBucket} -reportname ${ReportName} -reportpath ${ReportPath} -account ${AWS::AccountId}"
-                - "Fn::Sub": "chmod 755 ./bin/analyzeCUR && ./bin/analyzeCUR -bucket ${CURBucket} -reportname ${ReportName} -reportpath ${ReportPath} -account ${AWS::AccountId} -destbucket ${CURUploadBucket}"
+                - "Fn::Sub": "chmod 755 ./scripts/go/analyzeCUR/analyzeCUR && ./scripts/go/analyzeCUR/analyzeCUR -bucket ${CURBucket} -reportname ${ReportName} -reportpath ${ReportPath} -account ${AWS::AccountId}"
+                - "Fn::Sub": "chmod 755 ./scripts/go/analyzeCUR/analyzeCUR && ./scripts/go/analyzeCUR/analyzeCUR -bucket ${CURBucket} -reportname ${ReportName} -reportpath ${ReportPath} -account ${AWS::AccountId} -destbucket ${CURUploadBucket}"
               - "##  Self terminate running instance"
               - "instance=`curl -s http://169.254.169.254/latest/meta-data/instance-id`"
               - "Fn::Sub": "group=`aws autoscaling describe-auto-scaling-instances --instance-ids $instance --region ${AWS::Region} --query AutoScalingInstances[0].AutoScalingGroupName --output text`"
@@ -345,7 +345,7 @@ Resources:
       DesiredCapacity: 0
       Recurrence:
           "Fn::Sub": "55 */1 * * *"
-  
+
   CustomResourceLambdaFunctionExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -385,7 +385,7 @@ Resources:
 
             def get_account_id(context):
               return context.invoked_function_arn.split(':')[4]
-              
+
             def get_region(context):
               return context.invoked_function_arn.split(':')[3]
 
@@ -406,11 +406,11 @@ Resources:
             def delete_athena_resources(context, db):
                 # Delete Athena Database
                 resp = run_query(
-                    "DROP DATABASE " + db + ' CASCADE', 
-                    'default', 
+                    "DROP DATABASE " + db + ' CASCADE',
+                    'default',
                     's3://aws-athena-query-results-' + get_account_id(context) + '-' + get_region(context) + '/'
-                ) 
-                
+                )
+
             def delete_s3_resources(bucket):
               delete_key_list = []
               s3 = boto3.client('s3')
@@ -426,7 +426,7 @@ Resources:
                   s3.delete_objects(Bucket=bucket, Delete={'Objects': delete_key_list, 'Quiet': True })
               except Exception as e:
                 logger.error('Failed to delete S3 resources Exception: {0}'.format(traceback.format_exc()))
-                    
+
             def delete_cwlogs_resources(group):
                 logs = boto3.client('logs')
                 try:

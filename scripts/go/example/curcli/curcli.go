@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/andyfase/CURDashboard/go/curconvert"
+	"github.com/andyfase/CURDashboard/scripts/go/curconvert"
 	"github.com/urfave/cli"
 )
 

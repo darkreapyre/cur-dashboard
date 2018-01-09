@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/andyfase/CURDashboard/go/curconvert"
+	"github.com/andyfase/CURDashboard/scripts/go/curconvert"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
@@ -83,7 +83,7 @@ type Config struct {
 End of configuraton structs
 */
 
-var defaultConfigPath = "./analyzeCUR.config"
+var defaultConfigPath = "./scripts/analyzeCUR.config"
 var maxConcurrentQueries = 5
 
 func getInstanceMetadata(sess *session.Session) map[string]interface{} {

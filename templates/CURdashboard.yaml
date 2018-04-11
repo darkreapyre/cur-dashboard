@@ -3,12 +3,6 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: CUR Dashboard app stack launched into an existing VPC including ASG with timed scale-up / scale-down policy.
 
 Parameters:
-  ResourcePrefix:
-    Type: String
-    Description: A description to identify resources. Use an identical value across stacks (e.g. "cur-dashboard")
-    Default: cur-dashboard
-    MinLength: 2
-
   CURBucket:
     Type: String
     Description: S3 bucket configured for Cost and Usage Reports
@@ -81,6 +75,13 @@ Parameters:
   Subnet2:
     Description: Subnet in AZ 2 to launch spot instances into
     Type: AWS::EC2::Subnet::Id
+  
+  QSResourceTagPrefix:
+    Type: String
+    Description: "Prefix for resources that are Tagged for CURDashboard"
+    ConstraintDescription: "Resource tag prefix can include numbers, lowercase letters, uppercase letters, hyphens (-)."
+    AllowedPattern: "^[0-9a-zA-Z-]*$"
+    Default: "cur-dashboard"
 
 
 Mappings:
@@ -239,7 +240,7 @@ Resources:
                         -
                           "-"
                         -
-                          - { Ref: ResourcePrefix }
+                          - { Ref: QSResourceTagPrefix }
                           - "asg"
   IamProfile:
     Type: AWS::IAM::InstanceProfile
@@ -257,7 +258,7 @@ Resources:
           -
             "-"
           -
-            - { Ref: ResourcePrefix }
+            - { Ref: QSResourceTagPrefix }
             - "sg"
       Tags:
         - Key: Name
@@ -266,7 +267,7 @@ Resources:
               -
                 "-"
               -
-                - { Ref: ResourcePrefix }
+                - { Ref: QSResourceTagPrefix }
                 - "sg"
   LaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
@@ -315,7 +316,7 @@ Resources:
             "Fn::Join":
               - "-"
               -
-                - { Ref: ResourcePrefix }
+                - { Ref: QSResourceTagPrefix }
                 - "asg"
           PropagateAtLaunch: true
         -
@@ -364,7 +365,7 @@ Resources:
     Metadata:
       Comment:
         "Fn::Sub":
-          "Function for ${ResourcePrefix}"
+          "Function for ${QSResourceTagPrefix}"
     DependsOn: [ CustomResourceLambdaFunctionExecutionRole ]
     Properties:
       Code:

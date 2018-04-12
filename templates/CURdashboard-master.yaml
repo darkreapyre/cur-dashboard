@@ -151,6 +151,7 @@ Resources:
 
   CURDashboardStack:
     Type: AWS::CloudFormation::Stack
+    DependsOn: VPCStack
     Properties: 
      TemplateURL: "https://andy-gen.s3.amazonaws.com/CURdashboard.yaml"
      Parameters:

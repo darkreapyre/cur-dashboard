@@ -292,8 +292,8 @@ Resources:
               - ""
               - "## Install git and clone repo"
               - "yum install -y git"
-              - "Fn::Sub": "git clone ${GitURL}"
-              - "cd CURdashboard"
+              - "Fn::Sub": "git clone ${GitURL} cur-dashboard"
+              - "cd cur-dashboard"
               - "Fn::Sub": "git checkout ${GitBranch}"
               - "## Execute analyzeCUR binary"
               - "Fn::If":

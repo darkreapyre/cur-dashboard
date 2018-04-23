@@ -14,11 +14,8 @@ Metadata:
           - VPCCIDR
           - PrivateSubnet1CIDR
           - PrivateSubnet2CIDR
-          - PrivateSubnet3CIDR
           - PublicSubnet1CIDR
           - PublicSubnet2CIDR
-          - PublicSubnet3CIDR
-          - RemoteAccessCIDR
       - Label:
           default: "Security Configuration"
         Parameters:

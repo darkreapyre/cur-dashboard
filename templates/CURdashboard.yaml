@@ -2,6 +2,71 @@ AWSTemplateFormatVersion: "2010-09-09"
 
 Description: CUR Dashboard app stack launched into an existing VPC including ASG with timed scale-up / scale-down policy.
 
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: 
+          default: "Network Configuration"
+        Parameters:
+          - VPCID
+          - Subnet1
+          - Subnet2
+      - Label:
+          default: "Security Configuration"
+        Parameters:
+          - KeypairName
+      - Label:
+          default: "AWS Quick Start Configuration"
+        Parameters:
+          - QSResourceTagPrefix
+      - Label:
+          default: "CUR Report Configuration"
+        Parameters:
+          - CURBucket
+          - CURUploadBucket
+          - ReportName
+          - ReportPath
+      - Label: 
+          default: "CUR Conversion Configuration"
+        Parameters:
+          - Schedule
+          - InstanceType
+          - SpotPrice
+      - Label: 
+          default: "CUR Dashboard Code Configuration"
+        Parameters:
+          - GitURL
+          - GitBranch
+    ParameterLabels:
+      VPCID:
+        default: "Existing VPC Identifier"
+      Subnet1:
+        default: "Existing Subnet Identifier #1"
+      Subnet2:
+        default: "Existing Subnet Identifier #2"
+      KeypairName:
+        default: "Key Pair Name"
+      QSResourceTagPrefix:
+        default: "Quick Start Tag Prefix"
+      CURBucket:
+        default: "Source CUR Bucket Name"
+      CURUploadBucket:
+        default: "Optional Destination CUR Bucket Name for converted files (Leave blank if source and destination bucket should be the same"
+      ReportName:
+        default: "CUR Report Name as defined under 'Report Name' within 'AWS Cost and Usage Reports' in Billing Dashboard"
+      ReportPath:
+        default: CUR Report Path as defined under 'Report Path' within 'AWS Cost and Usage Reports' in Billing Dashboard"
+      Schedule:
+        default: "Crontab schedule for how often CUR conversion should occur"
+      InstanceType:
+        default: "Type and size of EC2 Instnce to perform conversion (recomendation is c5 family, scale size based on size of CUR/AWS Usage"
+      SpotPrice:
+        default: "Price per hour for Spot Bid (Actual price will vary based on spot market)"
+      GitURL:
+        default: "GIT URL of forked repo that is publically accessable"
+      GitBranch:
+        default: "Default GIT branch to checkout within GIT repo"
+
 Parameters:
   CURBucket:
     Type: String

@@ -701,7 +701,7 @@ func main() {
 			log.Fatal("Could not initalize Cloudwatch logger: " + err.Error())
 		}
 		defer logger.Close()
-		logger.Log(time.Now(), "CURDasboard running on "+meta["instanceId"].(string)+" in "+meta["availabilityZone"].(string))
+		logger.Log(time.Now(), "CURDashboard running on "+meta["instanceId"].(string)+" in "+meta["availabilityZone"].(string))
 	}
 
 	// read in command line params

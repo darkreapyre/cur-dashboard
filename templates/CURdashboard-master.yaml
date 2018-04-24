@@ -42,7 +42,7 @@ Metadata:
       - Label: 
           default: "CUR Dashboard Code Configuration"
         Parameters:
-          - GitURL
+          - ConfigFile
           - GitBranch
     ParameterLabels:
       AvailabilityZones:
@@ -83,8 +83,8 @@ Metadata:
         default: "Type and size of EC2 Instnce to perform conversion (recomendation is c5 family, scale size based on size of CUR/AWS Usage"
       SpotPrice:
         default: "Price per hour for Spot Bid (Actual price will vary based on spot market)"
-      GitURL:
-        default: "GIT URL of forked repo that is publically accessable"
+      ConfigFile:
+        default: "Name of cur-dashboard configuration file. This will be pushed into code-commit repo on first execution"
       GitBranch:
         default: "Default GIT branch to checkout within GIT repo"
       
@@ -135,11 +135,10 @@ Parameters:
     MinValue: 1
     Description: Time gap (in hours) between CUR automatic processing (the lower, the more frequent the conversion will occur)
 
-  GitURL:
+  ConfigFile:
     Type: String
-    Default: "https://github.com/andyfase/CURdashboard.git"
-    MinLength: 2
-    Description: "URL of the git repo that will be checked out and used when configuring the EC2 instance, use your cloned repo."
+    Default: "analyzeCUR.config"
+    Description: Name of cur-dashboard configuration file. This will be pushed into code-commit repo on first execution
 
   GitBranch:
     Type: String
@@ -250,10 +249,14 @@ Resources:
     DependsOn: VPCStack
     Properties: 
      TemplateURL:
-       Fn::Sub: https://andy-gen.s3.amazonaws.com/CURdashboard.yaml
+       Fn::Sub: https://${QSS3BucketName}.s3.amazonaws.com/${QSS3KeyPrefix}templates/CURdashboard.yaml
      Parameters:
       QSResourceTagPrefix:
         Ref: QSResourceTagPrefix
+      QSS3BucketName:
+        Ref: QSS3BucketName
+      QSS3KeyPrefix:
+        Ref: QSS3KeyPrefix
       CURBucket:
         Ref: CURBucket
       ReportName:
@@ -268,8 +271,8 @@ Resources:
         Ref: SpotPrice
       Schedule:
         Ref: Schedule
-      GitURL:
-        Ref: GitURL
+      ConfigFile:
+        Ref: ConfigFile
       GitBranch:
         Ref: GitBranch
       KeypairName:

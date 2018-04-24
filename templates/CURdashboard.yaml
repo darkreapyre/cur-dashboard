@@ -18,6 +18,8 @@ Metadata:
       - Label:
           default: "AWS Quick Start Configuration"
         Parameters:
+          - QSS3BucketName
+          - QSS3KeyPrefix
           - QSResourceTagPrefix
       - Label:
           default: "CUR Report Configuration"
@@ -35,7 +37,7 @@ Metadata:
       - Label: 
           default: "CUR Dashboard Code Configuration"
         Parameters:
-          - GitURL
+          - ConfigFile
           - GitBranch
     ParameterLabels:
       VPCID:
@@ -48,6 +50,10 @@ Metadata:
         default: "Key Pair Name"
       QSResourceTagPrefix:
         default: "Quick Start Tag Prefix"
+      QSS3BucketName:
+        default: "Quick Start S3 Bucket Name"
+      QSS3KeyPrefix:
+        default: "Quick Start S3 Key Prefix"
       CURBucket:
         default: "Source CUR Bucket Name"
       CURUploadBucket:
@@ -62,8 +68,8 @@ Metadata:
         default: "Type and size of EC2 Instnce to perform conversion (recomendation is c5 family, scale size based on size of CUR/AWS Usage"
       SpotPrice:
         default: "Price per hour for Spot Bid (Actual price will vary based on spot market)"
-      GitURL:
-        default: "GIT URL of forked repo that is publically accessable"
+      ConfigFile:
+        default: "Name of cur-dashboard configuration file. This will be pushed into code-commit repo on first execution"
       GitBranch:
         default: "Default GIT branch to checkout within GIT repo"
 
@@ -114,11 +120,10 @@ Parameters:
     MinValue: 1
     Description: Time gap (in hours) between CUR automatic processing (the lower, the more frequent the conversion will occur)
 
-  GitURL:
+  ConfigFile:
     Type: String
-    Default: "https://github.com/andyfase/CURdashboard.git"
-    MinLength: 2
-    Description: "URL of the git repo that will be checked out and used when configuring the EC2 instance, use your cloned repo."
+    Default: "analyzeCUR.config"
+    Description: Name of cur-dashboard configuration file. This will be pushed into code-commit repo on first execution
 
   GitBranch:
     Type: String
@@ -148,6 +153,19 @@ Parameters:
     AllowedPattern: "^[0-9a-zA-Z-]*$"
     Default: "cur-dashboard"
 
+  QSS3KeyPrefix:
+    Type: String
+    Description: "S3 key prefix for the Quick Start assets. Quick Start key prefix can include numbers, lowercase letters, uppercase letters, hyphens (-), and forward slash (/). It cannot start or end with a hyphen (-)."
+    ConstraintDescription: "Quick Start key prefix can include numbers, lowercase letters, uppercase letters, hyphens (-), and forward slash (/)."
+    AllowedPattern: "^[0-9a-zA-Z-/]*$"
+    Default: "cur-dashboard/"
+  
+  QSS3BucketName:
+    Type: String
+    Description: "S3 bucket name for the Quick Start assets. Quick Start bucket name can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-)."
+    ConstraintDescription: "Quick Start bucket name can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-)."
+    AllowedPattern: "^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$"
+    Default: "aws-quickstart"
 
 Mappings:
   RegionMap:
@@ -183,6 +201,7 @@ Conditions:
 Resources:
   IamRole:
     Type: AWS::IAM::Role
+    DependsOn: ConfigRepo
     Properties:
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
@@ -307,6 +326,12 @@ Resources:
                         -
                           - { Ref: QSResourceTagPrefix }
                           - "asg"
+              - Effect: Allow
+                Action:
+                  - codecommit:GitPull
+                  - codecommit:GitPush
+                Resource:
+                  - "Fn::GetAtt": [ ConfigRepo, Arn ]
   IamProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
@@ -354,18 +379,26 @@ Resources:
             - "\n"
             -
               - "#!/bin/bash"
-              - ""
-              - "## Install git and clone repo"
               - "yum install -y git"
-              - "Fn::Sub": "git clone ${GitURL} cur-dashboard"
-              - "cd cur-dashboard"
-              - "Fn::Sub": "git checkout ${GitBranch}"
-              - "## Execute analyzeCUR binary"
+              - "export HOME=/root"
+              - "git config --global credential.helper '!aws codecommit credential-helper $@'"
+              - "git config --global credential.UseHttpPath true"
+              - "Fn::Join":
+                - ""
+                -
+                  - "git clone "
+                  - "Fn::GetAtt": [ ConfigRepo, CloneUrlHttp ]
+                  - " cur-dashboard-config"
+              - "cd cur-dashboard-config"
+              - "Fn::Sub": "if [ ! -f ./${ConfigFile} ]; then"
+              - "Fn::Sub": "wget https://${QSS3BucketName}.s3.amazonaws.com/${QSS3KeyPrefix}scripts/analyzeCUR.config -O ./${ConfigFile} -q"
+              - "git add .; git commit -m 'Default Config File'; git push"
+              - "fi"
+              - "Fn::Sub": "wget https://${QSS3BucketName}.s3.amazonaws.com/${QSS3KeyPrefix}scripts/bin/analyzeCUR"
               - "Fn::If":
                 - NoUploadBucket
-                - "Fn::Sub": "chmod 755 ./scripts/bin/analyzeCUR && ./scripts/bin/analyzeCUR -bucket ${CURBucket} -reportname ${ReportName} -reportpath ${ReportPath} -account ${AWS::AccountId}"
-                - "Fn::Sub": "chmod 755 ./scripts/bin/analyzeCUR && ./scripts/bin/analyzeCUR -bucket ${CURBucket} -reportname ${ReportName} -reportpath ${ReportPath} -account ${AWS::AccountId} -destbucket ${CURUploadBucket}"
-              - "##  Self terminate running instance"
+                - "Fn::Sub": "chmod 755 ./analyzeCUR && ./analyzeCUR -bucket ${CURBucket} -reportname ${ReportName} -reportpath ${ReportPath} -account ${AWS::AccountId} -config ./${ConfigFile}"
+                - "Fn::Sub": "chmod 755 ./analyzeCUR && ./analyzeCUR -bucket ${CURBucket} -reportname ${ReportName} -reportpath ${ReportPath} -account ${AWS::AccountId} -config ./${ConfigFile} -destbucket ${CURUploadBucket}"
               - "instance=`curl -s http://169.254.169.254/latest/meta-data/instance-id`"
               - "Fn::Sub": "group=`aws autoscaling describe-auto-scaling-instances --instance-ids $instance --region ${AWS::Region} --query AutoScalingInstances[0].AutoScalingGroupName --output text`"
               - "Fn::Sub": "aws autoscaling update-auto-scaling-group --auto-scaling-group-name $group --region ${AWS::Region} --desired-capacity 0"
@@ -413,6 +446,18 @@ Resources:
       Recurrence:
           "Fn::Sub": "55 */1 * * *"
 
+  ConfigRepo:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryName: 
+        "Fn::Join":
+          - "-"
+          -
+            - { Ref: QSResourceTagPrefix }
+            - config
+            - repo
+      RepositoryDescription: "cur-dashboard repository for configuration file"
+    
   Policy:
     Type: AWS::IAM::Policy
     Properties:
@@ -604,5 +649,12 @@ Resources:
           - { Ref: CURUploadBucket }
 
 Outputs:
-  SgIdExport:
-    Value: { Ref: SecurityGroup }
+  ConfigRepoName:
+    Value: 
+      "Fn::GetAtt": [ ConfigRepo, Name ]
+  ConfigRepoSSH:
+    Value: 
+        "Fn::GetAtt": [ ConfigRepo, CloneUrlSsh ]
+  ConfigRepoHTTP:
+    Value: 
+        "Fn::GetAtt": [ ConfigRepo, CloneUrlHttp ]

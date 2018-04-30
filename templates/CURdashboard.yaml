@@ -41,37 +41,37 @@ Metadata:
           - GitBranch
     ParameterLabels:
       VPCID:
-        default: "Existing VPC Identifier"
+        default: "Existing VPC"
       Subnet1:
-        default: "Existing Subnet Identifier #1"
+        default: "Existing Subnet #1"
       Subnet2:
-        default: "Existing Subnet Identifier #2"
+        default: "Existing Subnet #2"
       KeypairName:
         default: "Key Pair Name"
-      QSResourceTagPrefix:
-        default: "Quick Start Tag Prefix"
       QSS3BucketName:
-        default: "Quick Start S3 Bucket Name"
+        default: "QS S3 Bucket Name"
       QSS3KeyPrefix:
-        default: "Quick Start S3 Key Prefix"
+        default: "QS S3 Key Prefix"
+      QSResourceTagPrefix:
+        default: "QS Tag Prefix"
       CURBucket:
-        default: "Source CUR Bucket Name"
+        default: "Source CUR Bucket"
       CURUploadBucket:
-        default: "Optional Destination CUR Bucket Name for converted files (Leave blank if source and destination bucket should be the same"
+        default: "Destination CUR Bucket (Leave blank if source and destination bucket should be the same)"
       ReportName:
-        default: "CUR Report Name as defined under 'Report Name' within 'AWS Cost and Usage Reports' in Billing Dashboard"
+        default: "CUR Report Name"
       ReportPath:
-        default: CUR Report Path as defined under 'Report Path' within 'AWS Cost and Usage Reports' in Billing Dashboard"
+        default: CUR Report Path"
       Schedule:
-        default: "Crontab schedule for how often CUR conversion should occur"
+        default: "CUR conversion schedule"
       InstanceType:
-        default: "Type and size of EC2 Instnce to perform conversion (recomendation is c5 family, scale size based on size of CUR/AWS Usage"
+        default: "Instance Type/Size"
       SpotPrice:
-        default: "Price per hour for Spot Bid (Actual price will vary based on spot market)"
+        default: "Max price per hour for bid"
       ConfigFile:
-        default: "Name of cur-dashboard configuration file. This will be pushed into code-commit repo on first execution"
+        default: "Config file name"
       GitBranch:
-        default: "Default GIT branch to checkout within GIT repo"
+        default: "Config git branch"
 
 Parameters:
   CURBucket:
@@ -81,12 +81,12 @@ Parameters:
 
   ReportName:
     Type: String
-    Description: The CUR Report Name setup in the billing dashboard
+    Description: As defined under 'Report Name' within 'AWS Cost and Usage Reports' in Billing Dashboard
     MinLength: 2
 
   ReportPath:
     Type: String
-    Description: The CUR Report Path setup in the billing dashboard
+    Description: Ss defined under 'Report Path' within 'AWS Cost and Usage Reports' in Billing Dashboard
     MinLength: 2
 
   CURUploadBucket:
@@ -112,7 +112,7 @@ Parameters:
     Type: Number
     Default: 0.50
     MinValue: 0.01
-    Description: The Maximum price for the instance you want to pay (Note you will be charged based on the current price)
+    Description: The Maximum price for the instance you want to pay (Note Actual price paid will vary based on spot market)
 
   Schedule:
     Type: Number
@@ -129,10 +129,11 @@ Parameters:
     Type: String
     Default: "master"
     MinLength: 2
-    Description: "Branch of your GIT repo that the EC2 instance will checkout. Change this from 'master' to test out seperate code branches before they are merged to master"
+    Description: Used branch for Codecommit config repo. Modify if testing changes before merge to master"
 
   KeypairName:
     Type: AWS::EC2::KeyPair::KeyName
+    Description: EC2 Key[air for instances performing CUR conversion
 
   VPCID:
     Description: The VPC to launch the CURdashboard into
@@ -148,21 +149,21 @@ Parameters:
   
   QSResourceTagPrefix:
     Type: String
-    Description: "Prefix for resources that are Tagged for CURDashboard"
+    Description: "Tag prefix Prefix for resources that created at part of cur-dashboard"
     ConstraintDescription: "Resource tag prefix can include numbers, lowercase letters, uppercase letters, hyphens (-)."
     AllowedPattern: "^[0-9a-zA-Z-]*$"
     Default: "cur-dashboard"
 
   QSS3KeyPrefix:
     Type: String
-    Description: "S3 key prefix for the Quick Start assets. Quick Start key prefix can include numbers, lowercase letters, uppercase letters, hyphens (-), and forward slash (/). It cannot start or end with a hyphen (-)."
+    Description: "S3 key prefix for the Quick Start assets."
     ConstraintDescription: "Quick Start key prefix can include numbers, lowercase letters, uppercase letters, hyphens (-), and forward slash (/)."
     AllowedPattern: "^[0-9a-zA-Z-/]*$"
     Default: "cur-dashboard/"
   
   QSS3BucketName:
     Type: String
-    Description: "S3 bucket name for the Quick Start assets. Quick Start bucket name can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-)."
+    Description: "S3 bucket name for the Quick Start assets."
     ConstraintDescription: "Quick Start bucket name can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-)."
     AllowedPattern: "^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$"
     Default: "aws-quickstart"
@@ -390,9 +391,10 @@ Resources:
                   - "Fn::GetAtt": [ ConfigRepo, CloneUrlHttp ]
                   - " cur-dashboard-config"
               - "cd cur-dashboard-config"
+              - "Fn::Sub": "git checkout ${GitBranch}"
               - "Fn::Sub": "if [ ! -f ./${ConfigFile} ]; then"
               - "Fn::Sub": "wget https://${QSS3BucketName}.s3.amazonaws.com/${QSS3KeyPrefix}scripts/analyzeCUR.config -O ./${ConfigFile} -q"
-              - "git add .; git commit -m 'Default Config File'; git push"
+              - "Fn::Sub": "git add .; git commit -m 'Default Config File'; git push origin ${GitBranch}"
               - "fi"
               - "Fn::Sub": "wget https://${QSS3BucketName}.s3.amazonaws.com/${QSS3KeyPrefix}scripts/bin/analyzeCUR"
               - "Fn::If":

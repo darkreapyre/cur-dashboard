@@ -10,7 +10,6 @@ Metadata:
         Parameters:
           - AvailabilityZones
           - NumberOfAZs
-          - CreatePrivateSubnets
           - VPCCIDR
           - PrivateSubnet1CIDR
           - PrivateSubnet2CIDR
@@ -30,9 +29,9 @@ Metadata:
           default: "CUR Report Configuration"
         Parameters:
           - CURBucket
-          - CURUploadBucket
           - ReportName
           - ReportPath
+          - CURUploadBucket
       - Label: 
           default: "CUR Conversion Configuration"
         Parameters:
@@ -49,8 +48,6 @@ Metadata:
         default: "Availability Zones"
       NumberOfAZs:
         default: "Number of Availability Zones"
-      CreatePrivateSubnets:
-        default: "Create cur-dashboard within private subnets? (Additional cost is involved due to NAT instances)"
       VPCCIDR:
         default: "VPC CIDR"
       PrivateSubnet1CIDR:
@@ -60,33 +57,33 @@ Metadata:
       PublicSubnet1CIDR:
         default: "Public Subnet 1 CIDR"
       PublicSubnet2CIDR:
-        default: "Public Subnet 1 CIDR"
+        default: "Public Subnet 2 CIDR"
       KeypairName:
         default: "Key Pair Name"
       QSS3BucketName:
-        default: "Quick Start S3 Bucket Name"
+        default: "QS S3 Bucket Name"
       QSS3KeyPrefix:
-        default: "Quick Start S3 Key Prefix"
+        default: "QS S3 Key Prefix"
       QSResourceTagPrefix:
-        default: "Quick Start Tag Prefix"
+        default: "QS Tag Prefix"
       CURBucket:
-        default: "Source CUR Bucket Name"
+        default: "Source CUR Bucket"
       CURUploadBucket:
-        default: "Optional Destination CUR Bucket Name for converted files (Leave blank if source and destination bucket should be the same"
+        default: "Destination CUR Bucket (Leave blank if source and destination bucket should be the same)"
       ReportName:
-        default: "CUR Report Name as defined under 'Report Name' within 'AWS Cost and Usage Reports' in Billing Dashboard"
+        default: "CUR Report Name"
       ReportPath:
-        default: CUR Report Path as defined under 'Report Path' within 'AWS Cost and Usage Reports' in Billing Dashboard"
+        default: CUR Report Path"
       Schedule:
-        default: "Crontab schedule for how often CUR conversion should occur"
+        default: "CUR conversion schedule"
       InstanceType:
-        default: "Type and size of EC2 Instnce to perform conversion (recomendation is c5 family, scale size based on size of CUR/AWS Usage"
+        default: "Instance Type/Size"
       SpotPrice:
-        default: "Price per hour for Spot Bid (Actual price will vary based on spot market)"
+        default: "Max price per hour for bid"
       ConfigFile:
-        default: "Name of cur-dashboard configuration file. This will be pushed into code-commit repo on first execution"
+        default: "Config file name"
       GitBranch:
-        default: "Default GIT branch to checkout within GIT repo"
+        default: "Config git branch"
       
 Parameters:
   CURBucket:
@@ -96,12 +93,12 @@ Parameters:
 
   ReportName:
     Type: String
-    Description: The CUR Report Name setup in the billing dashboard
+    Description: As defined under 'Report Name' within 'AWS Cost and Usage Reports' in Billing Dashboard
     MinLength: 2
 
   ReportPath:
     Type: String
-    Description: The CUR Report Path setup in the billing dashboard
+    Description: Ss defined under 'Report Path' within 'AWS Cost and Usage Reports' in Billing Dashboard
     MinLength: 2
 
   CURUploadBucket:
@@ -127,7 +124,7 @@ Parameters:
     Type: Number
     Default: 0.50
     MinValue: 0.01
-    Description: The Maximum price for the instance you want to pay (Note you will be charged based on the current price)
+    Description: The Maximum price for the instance you want to pay (Note Actual price paid will vary based on spot market)
 
   Schedule:
     Type: Number
@@ -144,14 +141,15 @@ Parameters:
     Type: String
     Default: "master"
     MinLength: 2
-    Description: "Branch of your GIT repo that the EC2 instance will checkout. Change this from 'master' to test out seperate code branches before they are merged to master"
+    Description: Used branch for Codecommit config repo. Modify if testing changes before merge to master"
 
   KeypairName:
     Type: AWS::EC2::KeyPair::KeyName
+    Description: EC2 Key[air for instances performing CUR conversion
 
   AvailabilityZones:
     Type:  "List<AWS::EC2::AvailabilityZone::Name>"
-    Description: "List of Availability Zones to use for the subnets in the VPC. Note: The logical order is preserved. 1 or 3 AZs are used for this deployment."
+    Description: "List of Availability Zones to use for the subnets in the VPC. Note: The logical order is preserved. 1 or 2 AZs are used for this deployment."
 
   VPCCIDR:
     Type: String
@@ -159,14 +157,6 @@ Parameters:
     ConstraintDescription: "CIDR block parameter must be in the form x.x.x.x/23"
     AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(23))$"
     Default: "10.0.0.0/23"
-
-  CreatePrivateSubnets: 
-    Type: String
-    Description: "Set to false to create only public subnets. If false, the CIDR parameters for ALL private subnets will be ignored."
-    AllowedValues:
-      - "true"
-      - "false"
-    Default: "false"
 
   PrivateSubnet1CIDR:
     Type: String
@@ -177,7 +167,7 @@ Parameters:
 
   PrivateSubnet2CIDR:
     Type: String
-    Description: "CIDR block for private subnet 1 located in Availability Zone 1."
+    Description: "CIDR block for private subnet 1 located in Availability Zone 2."
     ConstraintDescription: "CIDR block parameter must be in the form x.x.x.x/27"
     AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(27))$"
     Default: "10.0.0.32/27"
@@ -191,28 +181,28 @@ Parameters:
   
   PublicSubnet2CIDR:
     Type: String
-    Description: "CIDR block for public subnet 1 located in Availability Zone 1."
+    Description: "CIDR block for public subnet 1 located in Availability Zone 2."
     ConstraintDescription: "CIDR block parameter must be in the form x.x.x.x/27"
     AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/(27))$"
     Default: "10.0.1.32/27"
 
   QSResourceTagPrefix:
     Type: String
-    Description: "Prefix for resources that are Tagged for CURDashboard"
+    Description: "Tag prefix Prefix for resources that created at part of cur-dashboard"
     ConstraintDescription: "Resource tag prefix can include numbers, lowercase letters, uppercase letters, hyphens (-)."
     AllowedPattern: "^[0-9a-zA-Z-]*$"
     Default: "cur-dashboard"
 
   QSS3KeyPrefix:
     Type: String
-    Description: "S3 key prefix for the Quick Start assets. Quick Start key prefix can include numbers, lowercase letters, uppercase letters, hyphens (-), and forward slash (/). It cannot start or end with a hyphen (-)."
+    Description: "S3 key prefix for the Quick Start assets."
     ConstraintDescription: "Quick Start key prefix can include numbers, lowercase letters, uppercase letters, hyphens (-), and forward slash (/)."
     AllowedPattern: "^[0-9a-zA-Z-/]*$"
     Default: "cur-dashboard/"
   
   QSS3BucketName:
     Type: String
-    Description: "S3 bucket name for the Quick Start assets. Quick Start bucket name can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-)."
+    Description: "S3 bucket name for the Quick Start assets."
     ConstraintDescription: "Quick Start bucket name can include numbers, lowercase letters, uppercase letters, and hyphens (-). It cannot start or end with a hyphen (-)."
     AllowedPattern: "^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$"
     Default: "aws-quickstart"
@@ -237,8 +227,7 @@ Resources:
           Ref: PublicSubnet1CIDR
         PublicSubnet2CIDR:
           Ref: PublicSubnet2CIDR
-        CreatePrivateSubnets:
-          Ref: CreatePrivateSubnets
+        CreatePrivateSubnets: "false"
         VPCCIDR:
           Ref: VPCCIDR
         KeyPairName:

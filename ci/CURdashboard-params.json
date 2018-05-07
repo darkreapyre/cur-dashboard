@@ -1,78 +1,50 @@
 [
-  {
-    "ParameterValue": "",
-    "ParameterKey": "CURBucket"
-  },
-  {
-    "ParameterValue": "aws-quickstart",
-    "ParameterKey": "QSS3BucketName"
-  },
-  {
-    "ParameterValue": "10.0.0.32/27",
-    "ParameterKey": "PrivateSubnet2CIDR"
-  },
-  {
-    "ParameterValue": "",
-    "ParameterKey": "AvailabilityZones"
-  },
-  {
-    "ParameterValue": "develop",
-    "ParameterKey": "GitBranch"
-  },
-  {
-    "ParameterValue": "quickstart-mongodb/",
-    "ParameterKey": "QSS3KeyPrefix"
-  },
-  {
-    "ParameterValue": "cur-dashboard",
-    "ParameterKey": "QSResourceTagPrefix"
-  },
-  {
-    "ParameterValue": "",
-    "ParameterKey": "KeypairName"
-  },
-  {
-    "ParameterValue": "",
-    "ParameterKey": "CURUploadBucket"
-  },
-  {
-    "ParameterValue": "10.0.0.0/27",
-    "ParameterKey": "PrivateSubnet1CIDR"
-  },
-  {
-    "ParameterValue": "0.5",
-    "ParameterKey": "SpotPrice"
-  },
-  {
-    "ParameterValue": "",
-    "ParameterKey": "ReportName"
-  },
-  {
-    "ParameterValue": "10.0.1.32/27",
-    "ParameterKey": "PublicSubnet2CIDR"
-  },
-  {
-    "ParameterValue": "10.0.0.0/23",
-    "ParameterKey": "VPCCIDR"
-  },
-  {
-    "ParameterValue": "",
-    "ParameterKey": "ReportPath"
-  },
-  {
-    "ParameterValue": "4",
-    "ParameterKey": "Schedule"
-  },
-  {
-    "ParameterValue": "https://github.com/andyfase/cur-dashboard.git",
-    "ParameterKey": "GitURL"
-  },
-  {
-    "ParameterValue": "10.0.1.0/27",
-    "ParameterKey": "PublicSubnet1CIDR"
-  },
-  {
-    "ParameterValue": "c4.large",
-    "ParameterKey": "InstanceType"
-  }
+    {
+        "ParameterKey": "AvailabilityZones",
+        "ParameterValue": "$[taskcat_genaz_2]"
+    },
+    {
+        "ParameterKey": "CURBucket",
+        "ParameterValue": ""
+    },
+    {
+        "ParameterKey": "GitBranch",
+        "ParameterValue": "master"
+    },
+    {
+        "ParameterKey": "InstanceType",
+        "ParameterValue": "c4.large"
+    },
+    {
+        "ParameterKey": "KeypairName",
+        "ParameterValue": ""
+    },
+    {
+        "ParameterKey": "QSResourceTagPrefix",
+        "ParameterValue": "cur-dashboard"
+    },
+    {
+        "ParameterKey": "QSS3BucketName",
+        "ParameterValue": "aws-quickstart"
+    },
+    {
+        "ParameterKey": "QSS3KeyPrefix",
+        "ParameterValue": "cur-dashboard/"
+    },
+    {
+        "ParameterKey": "ReportName",
+        "ParameterValue": ""
+    },
+    {
+        "ParameterKey": "ReportPath",
+        "ParameterValue": ""
+    },
+    {
+        "ParameterKey": "Schedule",
+        "ParameterValue": "4"
+    },
+    {
+        "ParameterKey": "SpotPrice",
+        "ParameterValue": "0.5"
+    }
 ]

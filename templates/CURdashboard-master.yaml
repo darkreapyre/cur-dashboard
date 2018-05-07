@@ -103,6 +103,7 @@ Parameters:
 
   CURUploadBucket:
     Type: String
+    Default: ''
     Description: OPTIONAL S3 bucket for storing converted CUR files (only use this is your CUR bucket is invalid for use with Athena i.e. contains a underscore)
 
   InstanceType:

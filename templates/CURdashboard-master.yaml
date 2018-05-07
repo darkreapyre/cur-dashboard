@@ -188,7 +188,7 @@ Parameters:
 
   QSResourceTagPrefix:
     Type: String
-    Description: "Tag prefix Prefix for resources that created at part of cur-dashboard"
+    Description: "Tag prefix Prefix for resources that are created as part of cur-dashboard"
     ConstraintDescription: "Resource tag prefix can include numbers, lowercase letters, uppercase letters, hyphens (-)."
     AllowedPattern: "^[0-9a-zA-Z-]*$"
     Default: "cur-dashboard"

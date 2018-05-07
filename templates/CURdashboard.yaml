@@ -255,17 +255,8 @@ Resources:
                   - s3:GetObject
                   - s3:ListObjects
                 Resource:
-                  - "Fn::Join":
-                    - ""
-                    -
-                      - "arn:aws:s3:::"
-                      - { Ref: CURBucket }
-                      - "/*"
-                  - "Fn::Join":
-                    - ""
-                    -
-                      - "arn:aws:s3:::"
-                      - { Ref: CURBucket }
+                  - !Sub 'arn:aws:s3:::${CURBucket}'
+                  - !Sub 'arn:aws:s3:::${CURBucket}/*'
               - Effect: Allow
                 Action:
                   - s3:GetObject
@@ -273,25 +264,12 @@ Resources:
                   - s3:PutObject
                   - s3:DeleteObject
                 Resource:
-                  - "Fn::Join":
-                    - ""
-                    -
-                      - "arn:aws:s3:::"
-                      - "Fn::If":
-                        - NoUploadBucket
-                        - { Ref: CURBucket }
-                        - { Ref: CURUploadBucket }
-                      - "/parquet-cur"
-                      - "/*"
-                  - "Fn::Join":
-                    - ""
-                    -
-                      - "arn:aws:s3:::"
-                      - "Fn::If":
-                        - NoUploadBucket
-                        - { Ref: CURBucket }
-                        - { Ref: CURUploadBucket }
-                      - "/parquet-cur"
+                  - !Sub
+                      - 'arn:aws:s3:::${DerivedBucket}/parquet-cur/*'
+                      - {DerivedBucket: !If [NoUploadBucket, !Ref CURBucket, !Ref CURUploadBucket]}
+                  - !Sub
+                      - 'arn:aws:s3:::${DerivedBucket}/parquet-cur'
+                      - {DerivedBucket: !If [NoUploadBucket, !Ref CURBucket, !Ref CURUploadBucket]}
               - Effect: Allow
                 Action:
                   - s3:GetObject
@@ -309,28 +287,14 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                   - logs:DescribeLogStreams
-                Resource:
-                  - "Fn::Join":
-                    - ""
-                    -
-                      - "arn:aws:logs:"
-                      - Ref: "AWS::Region"
-                      - ":"
-                      - Ref: "AWS::AccountId"
-                      - ":log-group:CURdashboard:*"
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:CURdashboard:*'
               - Effect: Allow
                 Action:
                   - autoscaling:UpdateAutoScalingGroup
                 Resource: "*"
                 Condition:
                   StringEquals:
-                    autoscaling:ResourceTag/Name:
-                      "Fn::Join":
-                        -
-                          "-"
-                        -
-                          - { Ref: QSResourceTagPrefix }
-                          - "asg"
+                    autoscaling:ResourceTag/Name: !Sub '${QSResourceTagPrefix}-asg'
               - Effect: Allow
                 Action:
                   - codecommit:GitPull
@@ -348,22 +312,10 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       VpcId: !Ref VPCID
-      GroupDescription:
-        "Fn::Join":
-          -
-            "-"
-          -
-            - { Ref: QSResourceTagPrefix }
-            - "sg"
+      GroupDescription: !Sub '${QSResourceTagPrefix}-sg'
       Tags:
         - Key: Name
-          Value:
-            "Fn::Join":
-              -
-                "-"
-              -
-                - { Ref: QSResourceTagPrefix }
-                - "sg"
+          Value: !Sub '${QSResourceTagPrefix}-sg'
   LaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     Metadata:
@@ -423,12 +375,7 @@ Resources:
       Tags:
         -
           Key: Name
-          Value:
-            "Fn::Join":
-              - "-"
-              -
-                - { Ref: QSResourceTagPrefix }
-                - "asg"
+          Value: !Sub '${QSResourceTagPrefix}-asg'
           PropagateAtLaunch: true
         -
           Key: Project
@@ -462,13 +409,7 @@ Resources:
   ConfigRepo:
     Type: AWS::CodeCommit::Repository
     Properties:
-      RepositoryName: 
-        "Fn::Join":
-          - "-"
-          -
-            - { Ref: QSResourceTagPrefix }
-            - config
-            - repo
+      RepositoryName: !Sub '${QSResourceTagPrefix}-config-repo'
       RepositoryDescription: "cur-dashboard repository for configuration file"
     
   Policy:
@@ -518,25 +459,14 @@ Resources:
               - "s3:DeleteObject"
               - "s3:ListBucket"
               - "s3:ListObjects"
-            Resource: 
-              - "Fn::Join":
-                - ""
-                -
-                  - "arn:aws:s3:::"
-                  - "Fn::If":
-                    - NoUploadBucket
-                    - { Ref: CURBucket }
-                    - { Ref: CURUploadBucket }
-                  - "/*"
-              - "Fn::Join":
-                - ""
-                -
-                  - "arn:aws:s3:::"
-                  - "Fn::If":
-                    - NoUploadBucket
-                    - { Ref: CURBucket }
-                    - { Ref: CURUploadBucket }
-                    
+            Resource:
+              - !Sub
+                  - 'arn:aws:s3:::${DerivedBucket}/*'
+                  - {DerivedBucket: !If [NoUploadBucket, !Ref CURBucket, !Ref CURUploadBucket]}
+              - !Sub
+                  - 'arn:aws:s3:::${DerivedBucket}'
+                  - {DerivedBucket: !If [NoUploadBucket, !Ref CURBucket, !Ref CURUploadBucket]}
+
   CustomResourceLambdaFunctionExecutionRole:
     Type: AWS::IAM::Role
     Properties:

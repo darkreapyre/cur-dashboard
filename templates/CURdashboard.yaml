@@ -294,6 +294,10 @@ Resources:
                       - "/parquet-cur"
               - Effect: Allow
                 Action:
+                  - s3:GetObject
+                Resource: !Sub 'arn:aws:s3:::${QSS3BucketName}/${QSS3KeyPrefix}*'
+              - Effect: Allow
+                Action:
                   - cloudwatch:PutMetricData
                   - ec2:DescribeReservedInstances
                   - autoscaling:DescribeAutoScalingInstances
@@ -362,6 +366,13 @@ Resources:
                 - "sg"
   LaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
+    Metadata:
+      'AWS::CloudFormation::Authentication':
+        S3AccessCreds:
+          type: S3
+          roleName: !Ref IamRole
+          buckets:
+            - !Ref QSS3BucketName
     Properties:
       ImageId:
         "Fn::FindInMap":
@@ -393,10 +404,10 @@ Resources:
               - "cd cur-dashboard-config"
               - "Fn::Sub": "git checkout ${GitBranch}"
               - "Fn::Sub": "if [ ! -f ./${ConfigFile} ]; then"
-              - "Fn::Sub": "wget https://${QSS3BucketName}.s3.amazonaws.com/${QSS3KeyPrefix}scripts/analyzeCUR.config -O ./${ConfigFile} -q"
+              - "Fn::Sub": "aws s3 cp s3://${QSS3BucketName}/${QSS3KeyPrefix}scripts/analyzeCUR.config ./${ConfigFile}"
               - "Fn::Sub": "git add .; git commit -m 'Default Config File'; git push origin ${GitBranch}"
               - "fi"
-              - "Fn::Sub": "wget https://${QSS3BucketName}.s3.amazonaws.com/${QSS3KeyPrefix}scripts/bin/analyzeCUR"
+              - "Fn::Sub": "aws s3 cp s3://${QSS3BucketName}/${QSS3KeyPrefix}scripts/bin/analyzeCUR ."
               - "Fn::If":
                 - NoUploadBucket
                 - "Fn::Sub": "chmod 755 ./analyzeCUR && ./analyzeCUR -bucket ${CURBucket} -reportname ${ReportName} -reportpath ${ReportPath} -account ${AWS::AccountId} -config ./${ConfigFile}"

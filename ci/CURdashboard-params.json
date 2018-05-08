@@ -5,7 +5,7 @@
     },
     {
         "ParameterKey": "CURBucket",
-        "ParameterValue": ""
+        "ParameterValue": "<CUR-REPORTS-BUCKET-HERE>"
     },
     {
         "ParameterKey": "GitBranch",
@@ -17,7 +17,7 @@
     },
     {
         "ParameterKey": "KeypairName",
-        "ParameterValue": ""
+        "ParameterValue": "<KEY-PAIR>"
     },
     {
         "ParameterKey": "QSResourceTagPrefix",
@@ -33,11 +33,11 @@
     },
     {
         "ParameterKey": "ReportName",
-        "ParameterValue": ""
+        "ParameterValue": "<REPORT-NAME>"
     },
     {
         "ParameterKey": "ReportPath",
-        "ParameterValue": ""
+        "ParameterValue": "<REPORT-PATH>"
     },
     {
         "ParameterKey": "Schedule",

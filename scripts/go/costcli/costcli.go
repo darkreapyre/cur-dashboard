@@ -30,16 +30,19 @@ type Map struct {
 }
 
 type TagMap struct {
-	Tag string `json:"tag"`
-	Map []Map  `json:"map"`
+	Tags []string `json:"tags"`
+	Map  []Map    `json:"map"`
+	Name string   `json:"name"`
 }
 
 type Config struct {
-	TagMap   []TagMap `json:"tagmap"`
-	Tags     string
-	Database string
-	Table    string
-	Account  string
+	TagMap       []TagMap            `json:"tagmap"`
+	TagBlacklist map[string][]string `json:"tagblacklist"`
+	Sql          map[string]string   `json:"sql"`
+	Tags         string
+	Database     string
+	Table        string
+	Account      string
 }
 
 type AthenaResponse struct {
@@ -49,6 +52,15 @@ type AthenaResponse struct {
 type Results struct {
 	tagCosts map[string]float64
 	total    float64
+}
+
+func substituteParams(sql string, params map[string]string) string {
+
+	for sub, value := range params {
+		sql = strings.Replace(sql, sub, value, -1)
+	}
+
+	return sql
 }
 
 /*
@@ -76,13 +88,22 @@ func getConfig(conf *Config, configFile string) error {
 	return nil
 }
 
-func getCreds(arn string, externalID string, sess *session.Session) *credentials.Credentials {
+func getCreds(arn string, externalID string, mfa string, sess *session.Session) *credentials.Credentials {
 	if len(arn) < 1 {
 		return nil
 	}
+	if len(mfa) > 0 {
+		return stscreds.NewCredentials(sess, arn, func(p *stscreds.AssumeRoleProvider) {
+			p.SerialNumber = aws.String(mfa)
+			p.TokenProvider = stscreds.StdinTokenProvider
+			if len(externalID) > 0 {
+				p.ExternalID = aws.String(externalID)
+			}
+		})
+	}
 	if len(externalID) > 0 {
 		return stscreds.NewCredentials(sess, arn, func(p *stscreds.AssumeRoleProvider) {
-			p.ExternalID = &externalID
+			p.ExternalID = aws.String(externalID)
 		})
 	}
 	return stscreds.NewCredentials(sess, arn, func(p *stscreds.AssumeRoleProvider) {})
@@ -133,7 +154,7 @@ func sendQuery(svc *athena.Athena, db string, sql string, account string, region
 	}
 
 	if *qrop.QueryExecution.Status.State != "SUCCEEDED" {
-		return results, errors.New("Error Querying Athena, completion state is NOT SUCCEEDED, state is: " + *qrop.QueryExecution.Status.State)
+		return results, fmt.Errorf("Error Querying Athena, query state is: %s, detailed error %s", *qrop.QueryExecution.Status.State, *qrop.QueryExecution.Status.StateChangeReason)
 	}
 
 	var ip athena.GetQueryResultsInput
@@ -177,17 +198,6 @@ func sendQuery(svc *athena.Athena, db string, sql string, account string, region
 	return results, nil
 }
 
-func buildCostQuery(c *Config) string {
-	for _, tm := range c.TagMap {
-		c.Tags += "\"" + tm.Tag + "\","
-	}
-	c.Tags = c.Tags[:len(c.Tags)-1]
-
-	sql := "select \"lineitem/productcode\" as service," + c.Tags + ", sum(\"lineitem/blendedcost\") as cost from " + c.Database + "." + c.Table + " group by \"lineitem/productcode\", " + c.Tags
-
-	return sql
-}
-
 func findExact(value string, list []string) bool {
 	for _, v := range list {
 		if v == value {
@@ -211,24 +221,30 @@ func findRegex(value string, list []string) bool {
 	return false
 }
 
-func findTagMatch(match string, m []Map) string {
+func findTagMatch(match string, m []Map, tag string, blacklist map[string][]string) (string, error) {
 	for _, object := range m {
 		if findExact(match, object.Match) {
-			return object.Value
+			return object.Value, nil
 		}
 	}
 
 	for _, object := range m {
 		if findRegex(match, object.Regex) {
-			return object.Value
+			return object.Value, nil
 		}
 	}
 
+	tagblacklist, ok := blacklist[tag]
+	if ok {
+		if findRegex(match, tagblacklist) {
+			return "", fmt.Errorf("No Match")
+		}
+	}
 	if len(match) > 0 {
-		return match
+		return match, nil
 	}
 
-	return "Untagged"
+	return "", fmt.Errorf("No Match")
 }
 
 func processResults(resp AthenaResponse, c Config) Results {
@@ -247,12 +263,80 @@ func processResults(resp AthenaResponse, c Config) Results {
 
 		tags := []string{row["service"]}
 		for _, tm := range c.TagMap {
-			tags = append(tags, findTagMatch(row[tm.Tag], tm.Map))
+			found := false
+			for i := range tm.Tags {
+				match, err := findTagMatch(row[tm.Tags[i]], tm.Map, tm.Tags[i], c.TagBlacklist)
+				if err == nil {
+					tags = append(tags, match)
+					found = true
+					break
+				}
+			}
+			if !found {
+				tags = append(tags, "Untagged")
+			}
 		}
 		r.tagCosts[strings.Join(tags, ",")] += f
 		r.total += f
 	}
 	return *r
+}
+
+func processRIUsage(conf Config, svcAthena *athena.Athena, region string, s3ResultsLocation string, tagCost AthenaResponse) (AthenaResponse, error) {
+	// Total RI Cost
+	sql := substituteParams(conf.Sql["ricost"], map[string]string{"**DB**": conf.Database, "**TABLE**": conf.Table})
+	riCost, err := sendQuery(svcAthena, conf.Database, sql, conf.Account, region, s3ResultsLocation)
+	if err != nil {
+		return tagCost, err
+	}
+	riCostPerService := make(map[string]float64)
+	for _, row := range riCost.Rows {
+		f, err := strconv.ParseFloat(row["cost"], 64)
+		if err != nil {
+			fmt.Println("Failed to convert float, continuing")
+			continue
+		}
+		riCostPerService[row["service"]] = f
+	}
+
+	// RI Usage Per tag
+	var riUsage AthenaResponse
+	sql = substituteParams(conf.Sql["riusage"], map[string]string{"**TAGS**": conf.Tags, "**DB**": conf.Database, "**TABLE**": conf.Table})
+	riUsage, err = sendQuery(svcAthena, conf.Database, sql, conf.Account, region, s3ResultsLocation)
+	if err != nil {
+		return tagCost, err
+	}
+
+	// Total RI Usage per Service
+	riUsagePerService := make(map[string]float64)
+	for _, row := range riUsage.Rows {
+		f, err := strconv.ParseFloat(row["normalized_amount"], 64)
+		if err == nil && f > 0 {
+			riUsagePerService[row["service"]] += f
+		} else {
+			f, err := strconv.ParseFloat(row["amount"], 64)
+			if err == nil && f > 0 {
+				riUsagePerService[row["service"]] += f
+			}
+		}
+	}
+
+	// Calculate individual RI cost per row and append to riCost
+	for _, row := range riUsage.Rows {
+		f, err := strconv.ParseFloat(row["normalized_amount"], 64)
+		if err == nil && f > 0 {
+			cost := (f / riUsagePerService[row["service"]]) * riCostPerService[row["service"]]
+			row["cost"] = strconv.FormatFloat(cost, 'E', -1, 64)
+		} else {
+			f, err := strconv.ParseFloat(row["amount"], 64)
+			if err == nil && f > 0 {
+				cost := (f / riUsagePerService[row["service"]]) * riCostPerService[row["service"]]
+				row["cost"] = strconv.FormatFloat(cost, 'E', -1, 64)
+			}
+		}
+		tagCost.Rows = append(tagCost.Rows, row)
+	}
+	return tagCost, nil
 }
 
 func printResults(r Results, c Config) {
@@ -261,15 +345,19 @@ func printResults(r Results, c Config) {
 	for k := range r.tagCosts {
 		keys = append(keys, k)
 	}
-	// sort.Slice(keys, func(i, j int) bool {
-	// 	return keys[i][0:strings.Index(keys[i], ",")] < keys[j][0:strings.Index(keys[j], ",")]
-	// })
+
+	var tagNames string
+	for _, v := range c.TagMap {
+		tagNames += "\"" + v.Name + "\","
+	}
+
 	sort.Strings(keys)
 
-	fmt.Println("\"service\"," + c.Tags + ",\"amount\"")
-
+	fmt.Println("\"service\"," + tagNames + "\"amount\"")
 	for _, k := range keys {
-		fmt.Printf("%s,%.2f\n", k, math.Round(r.tagCosts[k]/0.01)*0.01)
+		if math.Round(r.tagCosts[k]/0.01)*0.01 > 0.01 {
+			fmt.Printf("%s,%.2f\n", k, math.Round(r.tagCosts[k]/0.01)*0.01)
+		}
 	}
 	fmt.Println("---------------------")
 	fmt.Printf("Total: %.2f", math.Round(r.total/0.01)*0.01)
@@ -281,7 +369,8 @@ func main() {
 	app.Usage = "Command Line Interface for download, conversion and re-upload of the AWS CUR from/to a S3 Bucket."
 	app.Version = "1.0.0"
 
-	var startDate, endDate, database, table, region, roleArn, externalID, configFile, s3ResultsLocation string
+	var startDate, endDate, database, table, region, roleArn, externalID, configFile, s3ResultsLocation, mfa string
+	var riUsage bool
 	app.Commands = []cli.Command{
 		{
 			Name:  "costbytag",
@@ -310,6 +399,12 @@ func main() {
 					Usage:       "Athena Table to use",
 					Value:       "",
 					Destination: &table,
+				},
+				cli.StringFlag{
+					Name:        "mfaSerial, mfa",
+					Usage:       "Optional MFA Serial or ARN",
+					Value:       "",
+					Destination: &mfa,
 				},
 				cli.StringFlag{
 					Name:        "resultsLocation, rl",
@@ -341,6 +436,11 @@ func main() {
 					Value:       "",
 					Destination: &configFile,
 				},
+				cli.BoolFlag{
+					Name:        "riusage, ri",
+					Usage:       "Process RI Usage and append to results",
+					Destination: &riUsage,
+				},
 			},
 			Action: func(c *cli.Context) error {
 
@@ -357,7 +457,6 @@ func main() {
 				conf.Database = database
 				conf.Table = table
 
-				// Init Session
 				sess, err := session.NewSession(&aws.Config{Region: aws.String(region)})
 				if err != nil {
 					return err
@@ -365,7 +464,7 @@ func main() {
 
 				// if needed set creds for AssumeRole and reset session
 				if len(roleArn) > 0 {
-					sess = sess.Copy(&aws.Config{Credentials: getCreds(roleArn, externalID, sess)})
+					sess = sess.Copy(&aws.Config{Credentials: getCreds(roleArn, externalID, mfa, sess)})
 				}
 
 				// fetch account ID
@@ -376,14 +475,29 @@ func main() {
 				}
 				conf.Account = *result.Account
 
-				// get Athena Data
+				for _, tm := range conf.TagMap {
+					for i := range tm.Tags {
+						conf.Tags += "\"" + tm.Tags[i] + "\","
+					}
+				}
+				conf.Tags = conf.Tags[:len(conf.Tags)-1]
+
+				// Normal Cost per tag
 				svcAthena := athena.New(sess)
-				response, err := sendQuery(svcAthena, conf.Database, buildCostQuery(&conf), conf.Account, region, s3ResultsLocation)
+				sql := substituteParams(conf.Sql["tagmap"], map[string]string{"**TAGS**": conf.Tags, "**DB**": conf.Database, "**TABLE**": conf.Table})
+				tagCost, err := sendQuery(svcAthena, conf.Database, sql, conf.Account, region, s3ResultsLocation)
 				if err != nil {
 					return err
 				}
 
-				printResults(processResults(response, conf), conf)
+				if riUsage {
+					tagCost, err = processRIUsage(conf, svcAthena, region, s3ResultsLocation, tagCost)
+					if err != nil {
+						return fmt.Errorf("Could not process RI information - try again or remove flag. Error: %s", err.Error())
+					}
+				}
+				printResults(processResults(tagCost, conf), conf)
+
 				return nil
 			},
 		},

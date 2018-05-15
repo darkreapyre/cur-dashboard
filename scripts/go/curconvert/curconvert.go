@@ -9,11 +9,14 @@ import (
 	"io"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/kms"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3crypto"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -36,14 +39,16 @@ type CurConvert struct {
 	sourceObject string
 	destBucket   string
 	destObject   string
+	destKMSKey   string
 
 	sourceArn        string
 	sourceExternalID string
 	destArn          string
 	destExternalID   string
 
-	tempDir     string
-	concurrency int
+	tempDir         string
+	concurrency     int
+	fileConcurrency int
 
 	CurColumns     []string
 	CurFiles       []string
@@ -63,6 +68,7 @@ func NewCurConvert(sBucket string, sObject string, dBucket string, dObject strin
 
 	cur.tempDir = "/tmp"
 	cur.concurrency = 10
+	cur.fileConcurrency = 30
 
 	// over-ride CUR column types
 	cur.CurColumnTypes = make(map[string]string)
@@ -84,6 +90,16 @@ func NewCurConvert(sBucket string, sObject string, dBucket string, dObject strin
 	cur.CurParqetFiles = make(map[string]bool)
 
 	return cur
+}
+
+//
+// SetFileConcurrency - Allows for over-ride of number of CUR files processed concurrently
+func (c *CurConvert) SetFileConcurrency(concurrency int) error {
+	if concurrency < 1 || concurrency > 1000 {
+		return errors.New("File Concurrency must be between 1-1000")
+	}
+	c.fileConcurrency = concurrency
+	return nil
 }
 
 //
@@ -125,6 +141,30 @@ func (c *CurConvert) SetDestPath(path string) error {
 		return errors.New("Must supply a Path")
 	}
 	c.destObject = path
+	return nil
+}
+
+//
+// SetDestKMSKey - sets the KMS Master key arn to use for
+func (c *CurConvert) SetDestKMSKey(key string) error {
+	if len(key) < 1 {
+		return errors.New("Must supply a Key ARN")
+	}
+	c.destKMSKey = key
+	return nil
+}
+
+//
+// SetTmpLocation - sets the temp directory for CUR files to be downloaded to, and parquet files to be written too
+func (c *CurConvert) SetTmpLocation(path string) error {
+	r, err := regexp.Compile("^/[A-Z,a-z,0-9,_,-,/]+[^/]$")
+	if err != nil {
+		return fmt.Errorf("Failed to set TempLocation, regexp error: %s", err)
+	}
+	if len(path) < 1 || !r.MatchString(path) {
+		return errors.New("Must supply a valid path that starts with '/' and is not terminated with '/'")
+	}
+	c.tempDir = path
 	return nil
 }
 
@@ -464,11 +504,7 @@ func (c *CurConvert) ParquetCur(inputFile string) (string, error) {
 	return localParquetFile, nil
 }
 
-//
-// UploadCur -
-func (c *CurConvert) UploadCur(parquetFile string) error {
-
-	uploadFile := c.destObject + "/" + parquetFile[strings.LastIndex(parquetFile, "/")+1:]
+func (c *CurConvert) uploadCUR(destObject string, file io.Reader) error {
 
 	// init S3 manager
 	s3up, err := c.initS3Uploader(c.destBucket, c.destArn, c.destExternalID)
@@ -476,25 +512,79 @@ func (c *CurConvert) UploadCur(parquetFile string) error {
 		return err
 	}
 
-	// open file
+	_, err = s3up.Upload(&s3manager.UploadInput{
+		Bucket: aws.String(c.destBucket),
+		Key:    aws.String(destObject),
+		Body:   file,
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to upload CUR parquet object, bucket: %s, object: %s, error: %s", c.destBucket, destObject, err.Error())
+	}
+
+	return nil
+}
+
+func (c *CurConvert) uploadEncryptedCUR(destObject string, file io.ReadSeeker) error {
+
+	// get location of bucket
+	bucketLocation, err := c.getBucketLocation(c.destBucket, c.destArn, c.destExternalID)
+	if err != nil {
+		return err
+	}
+
+	// Init Session
+	sess, err := session.NewSession(&aws.Config{Region: aws.String(bucketLocation), DisableRestProtocolURICleaning: aws.Bool(true)})
+	if err != nil {
+		return err
+	}
+
+	// if needed set creds for AssumeRole and reset session
+	if len(c.destArn) > 0 {
+		sess = sess.Copy(&aws.Config{Credentials: c.getCreds(c.destArn, c.destExternalID, sess)})
+	}
+
+	// init crypto lib
+	handler := s3crypto.NewKMSKeyGenerator(kms.New(sess), c.destKMSKey)
+	encryptionClient := s3crypto.NewEncryptionClient(sess, s3crypto.AESGCMContentCipherBuilder(handler))
+
+	req, _ := encryptionClient.PutObjectRequest(&s3.PutObjectInput{
+		Bucket: aws.String(c.destBucket),
+		Key:    aws.String(destObject),
+		Body:   file,
+	})
+
+	err = req.Send()
+	if err != nil {
+		return fmt.Errorf("failed to upload CUR parquet object, bucket: %s, object: %s, error: %s", c.destBucket, destObject, err.Error())
+	}
+
+	return nil
+}
+
+//
+// UploadCur -
+func (c *CurConvert) UploadCur(parquetFile string) error {
+
+	destObject := c.destObject + "/" + parquetFile[strings.LastIndex(parquetFile, "/")+1:]
+
 	file, err := os.Open(parquetFile)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 
-	// Upload CUR manifest JSON
-	_, err = s3up.Upload(&s3manager.UploadInput{
-		Bucket: aws.String(c.destBucket),
-		Key:    aws.String(uploadFile),
-		Body:   file,
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to upload CUR parquet object, bucket: %s, object: %s, error: %s", c.destBucket, uploadFile, err.Error())
+	if len(c.destKMSKey) > 0 {
+		if err := c.uploadEncryptedCUR(destObject, file); err != nil {
+			return err
+		}
+	} else {
+		if err := c.uploadCUR(destObject, file); err != nil {
+			return err
+		}
 	}
 
-	c.CurParqetFiles[uploadFile] = true
+	c.CurParqetFiles[destObject] = true
 	return nil
 }
 
@@ -553,9 +643,11 @@ func (c *CurConvert) ConvertCur() error {
 	}
 
 	result := make(chan error)
+	limit := make(chan bool, c.fileConcurrency)
 	i := 0
 	for reportKey := range c.CurFiles {
 		go func(object string) {
+			limit <- true
 			gzipFile, err := c.DownloadCur(object)
 			if err != nil {
 				result <- fmt.Errorf("Error Downloading CUR: %s", err.Error())
@@ -575,6 +667,7 @@ func (c *CurConvert) ConvertCur() error {
 
 			os.Remove(gzipFile)
 			os.Remove(parquetFile)
+			<-limit
 			result <- nil
 		}(c.CurFiles[reportKey])
 		i++
